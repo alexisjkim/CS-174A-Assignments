@@ -51,7 +51,9 @@ const phong_material = new THREE.MeshPhongMaterial({
 
 // Start here.
 
-const l = 0.5
+const l = 0.5 // half the length of the side of the cube
+
+// holds the positions of the vertices of a cube that's centered at the origin
 const positions = new Float32Array([
     // Front face
     -l, -l,  l, // 0
@@ -91,6 +93,7 @@ const positions = new Float32Array([
 
   ]);
   
+  // the triangles that make up the mesh cubes
   const indices = [
     // Front face
     0, 1, 2,
@@ -118,7 +121,7 @@ const positions = new Float32Array([
 
   ];
   
-  // Compute normals
+  // compute the normals to each vector in the positions array
   const normals = new Float32Array([
     // Front face
     0, 0, 1,
@@ -162,10 +165,7 @@ custom_cube_geometry.setAttribute('position', new THREE.BufferAttribute(position
 custom_cube_geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 custom_cube_geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
 
-//let cube = new THREE.Mesh( custom_cube_geometry, phong_material );
-//scene.add(cube);
-
-// TODO: Implement wireframe geometry
+// vertices for the wireframe cubes
 const wireframe_vertices = new Float32Array([
   // Front face
       -l, -l, l,
@@ -218,9 +218,7 @@ const wireframe_vertices = new Float32Array([
 const wireframe_geometry = new THREE.BufferGeometry();
 wireframe_geometry.setAttribute( 'position', new THREE.BufferAttribute( wireframe_vertices, 3 ) );
 
-const line = new THREE.LineSegments(wireframe_geometry);
-
-
+// translates an object by tx, ty, tz units
 function translationMatrix(tx, ty, tz) {
 	return new THREE.Matrix4().set(
 		1, 0, 0, tx,
@@ -229,8 +227,8 @@ function translationMatrix(tx, ty, tz) {
 		0, 0, 0, 1
 	);
 }
-// TODO: Implement the other transformation functions.
 
+// rotates an object by theta units, starting counterclockwise
 function rotationMatrixZ(theta) {
 	return new THREE.Matrix4().set(
     Math.cos(theta), -Math.sin(theta), 0, 0,
@@ -240,6 +238,7 @@ function rotationMatrixZ(theta) {
 	);
 }
 
+// scales an object in each dimension by sx, sy, sz
 function scalingMatrix(sx, sy, sz) {
   return new THREE.Matrix4().set(
     sx, 0, 0, 0,
@@ -249,14 +248,7 @@ function scalingMatrix(sx, sy, sz) {
   );
 }
 
-let wireframe_cubes = [];
-for (let i = 0; i < 7; i++) {
-	let cube = new THREE.LineSegments(wireframe_geometry, phong_material);
-	cube.matrixAutoUpdate = false;
-	wireframe_cubes.push(cube);
-	scene.add(cube);
-}
-
+// make the mesh cubes
 let mesh_cubes = [];
 for (let i = 0; i < 7; i++) {
 	let cube = new THREE.Mesh(custom_cube_geometry, phong_material);
@@ -265,6 +257,16 @@ for (let i = 0; i < 7; i++) {
 	scene.add(cube);
 }
 
+// make the wireframe cubes
+let wireframe_cubes = [];
+for (let i = 0; i < 7; i++) {
+	let cube = new THREE.LineSegments(wireframe_geometry, phong_material);
+	cube.matrixAutoUpdate = false;
+	wireframe_cubes.push(cube);
+	scene.add(cube);
+}
+
+// for demo purposes
 const scale = scalingMatrix(1, 1.5, 1);
 const translation1 = translationMatrix(l, l*1.5, 0); // Translate up (1, 1)
 const rotation = rotationMatrixZ(degToRad(10)); // rotate the cube 10 degrees to the left
@@ -282,7 +284,7 @@ for (let i = 0; i < wireframe_cubes.length; i++) {
     
 }
 
-
+// constants for making animation
 let animation_time = 0;
 let delta_animation_time;
 let rotation_angle;
@@ -294,13 +296,13 @@ let T = 2; // oscilation period in seconds
 let still = false;
 let mesh_visible = true; // if true, show the mesh cubes and hide the wireframe cubes; if false, do the opposite
 
-// Function to handle keypress
+// function to handle keypress
 function onKeyPress(event) {
   switch (event.key) {
-      case 's': // Note we only do this if s is pressed.
+      case 's': // press s to pause and start the animation
           still = !still;
           break;
-      case 'w':
+      case 'w': // press w to switch between mesh and wireframe views
         mesh_visible = !mesh_visible;
       default:
           console.log(`Key ${event.key} pressed`);
@@ -317,22 +319,27 @@ function animate() {
 
     rotation_angle = MAX_ANGLE * Math.sin((2 * Math.PI / 2) * animation_time) + MAX_ANGLE;
 
-    const scale = scalingMatrix(1, 1.5, 1);
-    const translation1 = translationMatrix(l, l*1.5, 0); // Translate up (1, 1)
-    const rotation = rotationMatrixZ(rotation_angle); // rotation; angle is based on time
+    const scale = scalingMatrix(1, 1.5, 1); // scale cube to be 1 x 1.5 x 1
+    const translation1 = translationMatrix(l, l*1.5, 0); // translate up
+    const rotation = rotationMatrixZ(rotation_angle); // rotation
     const translation2 = translationMatrix(-l, -l*1.5, 0); // inverse of first translation
-    const translation3 = translationMatrix(0, 3*l, 0); // translate up (0, 1)
+    const translation3 = translationMatrix(0, 3*l, 0); // translate up
 
     let model_transformation = new THREE.Matrix4(); // model transformation matrix we will update
-    model_transformation.multiplyMatrices(scale, model_transformation);
+
+    model_transformation.multiplyMatrices(scale, model_transformation); // scale cubes first
+
     for (let i = 0; i < wireframe_cubes.length; i++) {
         wireframe_cubes[i].matrix.copy(model_transformation);
         mesh_cubes[i].matrix.copy(model_transformation);
+
+        // apply transformations
         model_transformation.multiplyMatrices(translation1, model_transformation);
         model_transformation.multiplyMatrices(rotation, model_transformation);
         model_transformation.multiplyMatrices(translation2, model_transformation);
         model_transformation.multiplyMatrices(translation3, model_transformation);
 
+        // choose whether to set mesh or wireframe cubes visible
         mesh_cubes[i].visible = mesh_visible;
         wireframe_cubes[i].visible = !mesh_visible;
     }

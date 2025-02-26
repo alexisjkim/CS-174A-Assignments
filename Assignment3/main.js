@@ -104,7 +104,7 @@ const planet2 = new THREE.Mesh(
 scene.add(planet2);
 
 // TODO: Create Planet 3: Muddy Brown-Orange Planet with Ring
-let planet3 = new THREE.Mesh(
+const planet3 = new THREE.Mesh(
     new THREE.SphereGeometry(1, 16, 16),
     createPhongMaterial({
         color: 0xB08040,
@@ -116,27 +116,36 @@ let planet3 = new THREE.Mesh(
 );
 scene.add(planet3);
 // Planet 3 Ring
-let ring = new THREE.Mesh(
+const ring = new THREE.Mesh(
     new THREE.RingGeometry(1.5, 2.5, 64),
     createRingMaterial({
-        
+        color: 0xB08040
     })
 );
 planet3.add(ring);
 
 // TODO: Create Planet 4: Soft Light Blue Planet
-// let planet4 = new THREE.Mesh(
-//     new THREE.SphereGeometry(1, 16, 16),
-//     createPhongMaterial(
-//         color: 0x0000D1,
-//         ambient: 0.0,
-
-//     )
-
-// );
+const planet4 = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 16, 16),
+    createPhongMaterial({
+        color: 0x0000D1,
+        ambient: 0.0,
+        diffusivity: 1.0,
+        specularity: 1.0,
+        smoothness: 100.0
+    })
+);
+scene.add(planet4);
 
 // TODO: Create Planet 4's Moon
-let moon = null;
+const moon = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 4, 2),
+    new THREE.MeshPhongMaterial({
+        color: 0xC83CB9,
+        flatShading: true
+    })
+);
+scene.add(moon);
 
 // TODO: Store planets and moon in an array for easy access, 
 // e.g. { mesh: planet1, distance: 5, speed: 1 },
@@ -156,8 +165,17 @@ planets = [
         mesh: planet3,
         distance: 11,
         speed: 5/11
+    },
+    {
+        mesh: planet4,
+        distance: 14,
+        speed: 5/14
+    },
+    {
+        mesh: moon,
+        distance: 14,
+        speed: 5/14
     }
-
 ];
 
 // Handle window resize
@@ -179,7 +197,8 @@ function createGouraudMaterial(materialProperties) {
         shape_color_representation.b,
         1.0
     ); 
-    // TODO: Implement the Vertex Shader in GLSL
+    
+    // Vertex Shader
     let vertexShader = `
         precision mediump float;
         const int N_LIGHTS = ${numLights};
@@ -190,28 +209,24 @@ function createGouraudMaterial(materialProperties) {
         uniform vec4 shape_color;
         uniform vec3 squared_scale;
         uniform vec3 camera_center;
-        varying vec3 N, vertex_worldspace;
+        varying vec4 color;
 
-        vec3 phong_model_lights(vec3 N, vec3 vertex_worldspace) {
-            vec3 E = normalize(camera_center - vertex_worldspace); // View direction
-            vec3 result = vec3(0.0); // Initialize the output color
+        vec3 gouraud_shading(vec3 N, vec3 vertex_worldspace) {
+            vec3 E = normalize(camera_center - vertex_worldspace);
+            vec3 result = shape_color.xyz * ambient; // Ambient term
+
             for(int i = 0; i < N_LIGHTS; i++) {
-                // Calculate the vector from the surface to the light source
                 vec3 surface_to_light_vector = light_positions_or_vectors[i].xyz - 
                     light_positions_or_vectors[i].w * vertex_worldspace;
-                float distance_to_light = length(surface_to_light_vector); // Light distance
-                vec3 L = normalize(surface_to_light_vector); // Light direction
-                
-                // Phong uses the reflection vector R
-                vec3 R = reflect(-L, N); // Reflect L around the normal N
-                
-                float diffuse = max(dot(N, L), 0.0); // Diffuse term
-                float specular = pow(max(dot(R, E), 0.0), smoothness); // Specular term
-                
-                // Light attenuation
+                float distance_to_light = length(surface_to_light_vector);
+                vec3 L = normalize(surface_to_light_vector);
+                vec3 R = reflect(-L, N);
+
+                float diffuse = max(dot(N, L), 0.0);
+                float specular = pow(max(dot(R, E), 0.0), smoothness);
+
                 float attenuation = 1.0 / (1.0 + light_attenuation_factors[i] * distance_to_light * distance_to_light);
                 
-                // Calculate the contribution of this light source
                 vec3 light_contribution = shape_color.xyz * light_colors[i].xyz * diffusivity * diffuse
                                         + light_colors[i].xyz * specularity * specular;
                 result += attenuation * light_contribution;
@@ -224,55 +239,20 @@ function createGouraudMaterial(materialProperties) {
 
         void main() {
             gl_Position = projection_camera_model_transform * vec4(position, 1.0);
-            N = normalize(mat3(model_transform) * normal / squared_scale);
-            vertex_worldspace = (model_transform * vec4(position, 1.0)).xyz;
+            vec3 N_world = normalize(mat3(model_transform) * normal / squared_scale);
+            vec3 vertex_worldspace = (model_transform * vec4(position, 1.0)).xyz;
+            
+            // Compute lighting at each vertex
+            vec3 computed_color = gouraud_shading(N_world, vertex_worldspace);
+            color = vec4(computed_color, shape_color.w);
         }
     `;
 
-    // TODO: Implement the Fragment Shader in GLSL
+    // Fragment Shader
     let fragmentShader = `
-        precision mediump float;
-        const int N_LIGHTS = ${numLights};
-        uniform float ambient, diffusivity, specularity, smoothness;
-        uniform vec4 light_positions_or_vectors[N_LIGHTS];
-        uniform vec4 light_colors[N_LIGHTS];
-        uniform float light_attenuation_factors[N_LIGHTS];
-        uniform vec4 shape_color;
-        uniform vec3 camera_center;
-        varying vec3 N, vertex_worldspace;
-
-        vec3 phong_model_lights(vec3 N, vec3 vertex_worldspace) {
-            vec3 E = normalize(camera_center - vertex_worldspace); // View direction
-            vec3 result = vec3(0.0); // Initialize the output color
-            for(int i = 0; i < N_LIGHTS; i++) {
-                // Calculate the vector from the surface to the light source
-                vec3 surface_to_light_vector = light_positions_or_vectors[i].xyz - 
-                    light_positions_or_vectors[i].w * vertex_worldspace;
-                float distance_to_light = length(surface_to_light_vector); // Light distance
-                vec3 L = normalize(surface_to_light_vector); // Light direction
-                
-                // Phong uses the reflection vector R
-                vec3 R = reflect(-L, N); // Reflect L around the normal N
-                
-                float diffuse = max(dot(N, L), 0.0); // Diffuse term
-                float specular = pow(max(dot(R, E), 0.0), smoothness); // Specular term
-                
-                // Light attenuation
-                float attenuation = 1.0 / (1.0 + light_attenuation_factors[i] * distance_to_light * distance_to_light);
-                
-                // Calculate the contribution of this light source
-                vec3 light_contribution = shape_color.xyz * light_colors[i].xyz * diffusivity * diffuse
-                                        + light_colors[i].xyz * specularity * specular;
-                result += attenuation * light_contribution;
-            }
-            return result;
-        }
+        varying vec4 color;
 
         void main() {
-            // Compute an initial (ambient) color:
-            vec4 color = vec4(shape_color.xyz * ambient, shape_color.w);
-            // Compute the final color with contributions from lights:
-            color.xyz += phong_model_lights(normalize(N), vertex_worldspace);
             gl_FragColor = color;
         }
     `;
@@ -303,13 +283,7 @@ function createGouraudMaterial(materialProperties) {
 
 // Custom Phong Shader has already been implemented, no need to make change.
 function createPhongMaterial(materialProperties) {
-
-    console.log("hello");
-
-
     const numLights = 1;
-
-    console.log(materialProperties.color);
     
     // convert shape_color1 to a Vector4
     let shape_color_representation = new THREE.Color(materialProperties.color);
@@ -458,7 +432,9 @@ function createRingMaterial(materialProperties) {
         varying vec3 vPosition;
 
         void main() {
-
+            float distance = length(vPosition);
+            float brightness = 0.5 + 0.5 * sin(30.0 * distance);
+            gl_FragColor = vec4(color * brightness, 1.0);
         }
     `;
 
@@ -468,6 +444,7 @@ function createRingMaterial(materialProperties) {
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
         side: THREE.DoubleSide
+
     });
 }
 
@@ -564,11 +541,28 @@ function onWindowResize() {
 // TODO: Implement the camera attachment given the key being pressed
 // Hint: This step you only need to determine the object that are attached to and assign it to a variable you have to store the attached object.
 function onKeyDown(event) {
+    let camera_planet;
     switch (event.keyCode) {
-        case 48: // '0' key - Detach camera
-            break;
         
-        //...
+        case 49:
+            attachedObject = 0;
+            break;
+        case 50:
+            attachedObject = 1;
+            break;
+        case 51:
+            attachedObject = 2;
+            break;
+        case 52:
+            attachedObject = 3;
+            break;
+        case 53:
+            attachedObject = 4;
+            break;
+
+        case 48: // '0' key - Detach camera
+            attachedObject = null;
+            break;
     }
 }
 
@@ -599,7 +593,7 @@ function animate() {
 
     // TODO: Update sun light
     sunLight.color.setRGB(sun.material.color.r, sun.material.color.g, sun.material.color.b);
-    sunLight.power = Math.pow(100, sun.geometry.parameters.radius);
+    sunLight.power = Math.pow(10, sun.geometry.parameters.radius);
 
     // TODO: Loop through all the orbiting planets and apply transformation to create animation effect
     planets.forEach(function (obj, index) {
@@ -608,7 +602,15 @@ function animate() {
         let speed = obj.speed;
         
         let model_transform = new THREE.Matrix4(); 
-        
+
+        if (planet == planet3) { // if this is planet 3, then do a wobble effect
+            const wobbleAngle = 0.6 *  Math.sin(1.2 * time % (2 * Math.PI));
+            const wobbleX = rotationMatrixX(wobbleAngle);
+            const wobbleZ = rotationMatrixZ(wobbleAngle);
+            model_transform.multiplyMatrices(wobbleX, model_transform);
+            model_transform.multiplyMatrices(wobbleZ, model_transform);
+        }
+
         // TODO: Implement the model transformations for the planets
         // Hint: Some of the planets have the same set of transformation matrices, but for some you have to apply some additional transformation to make it work (e.g. planet4's moon, planet3's wobbling effect(optional)).
 
@@ -617,6 +619,13 @@ function animate() {
         model_transform.multiplyMatrices(translation, model_transform);
         model_transform.multiplyMatrices(rotation, model_transform);
 
+
+        if (planet == moon) { // if it's the moon, then do special orbiting around planet 4
+                let moonX = 2.5 * Math.cos(2 * time);
+                let moonZ = 2.5 * Math.sin(2 * time);
+                const moonTranslation = translationMatrix(moonX, 0, moonZ);
+                model_transform.multiplyMatrices(moonTranslation, model_transform);
+        }
 
         planet.matrix.copy(model_transform);
         planet.matrixAutoUpdate = false;
@@ -649,6 +658,8 @@ function animate() {
         // TODO: If camera is detached, slowly lerp the camera back to the original position and look at the origin
         else if (attachedObject === null) {
 
+            camera.position.lerp(new THREE.Vector3(0, 10, 20), 0.1);
+            camera.lookAt(0, 0, 0);
 
             // Enable controls
             controls.enabled = true;
@@ -670,6 +681,7 @@ function animate() {
     // e.g. updatePlanetMaterialUniforms(planets[1].mesh);
     updatePlanetMaterialUniforms(planets[1].mesh);
     updatePlanetMaterialUniforms(planets[2].mesh);
+    updatePlanetMaterialUniforms(planets[3].mesh);
     
 
     // Update controls only when the camera is not attached

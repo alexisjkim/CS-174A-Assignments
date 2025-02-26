@@ -317,7 +317,7 @@ function animate() {
     delta_animation_time = clock.getDelta();
     animation_time += delta_animation_time;
 
-    rotation_angle = MAX_ANGLE * Math.sin((2 * Math.PI / 2) * animation_time) + MAX_ANGLE;
+    rotation_angle = 0.5 * MAX_ANGLE * Math.sin((T * Math.PI / 2) * animation_time) + (MAX_ANGLE * 0.5);
 
     const scale = scalingMatrix(1, 1.5, 1); // scale cube to be 1 x 1.5 x 1
     const translation1 = translationMatrix(l, l*1.5, 0); // translate up
